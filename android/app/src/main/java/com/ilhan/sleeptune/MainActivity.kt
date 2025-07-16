@@ -1,4 +1,4 @@
-package com.sleeptune
+package com.ilhan.sleeptune
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
