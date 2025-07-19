@@ -73,3 +73,20 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Eklemeler (React Native + Android için güvenli ignore'lar)
+android/.gradle/
+android/.idea/
+android/app/build/
+android/build/
+*.keystore
+android/app/debug.keystore
+android/app/keystore-release.jks
+
+.expo/
+.expo-shared/
+
+.env
+tmp/
+temp/
+.cache/
