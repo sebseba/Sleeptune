@@ -4,12 +4,11 @@ import android.app.Application
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
-import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
-import com.ilhan.sleeptune.DeviceAdminPackage
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 
 class MainApplication : Application(), ReactApplication {
 
@@ -17,7 +16,11 @@ class MainApplication : Application(), ReactApplication {
     object : DefaultReactNativeHost(this) {
       override fun getPackages(): List<ReactPackage> {
         val packages = PackageList(this).packages.toMutableList()
-        packages.add(DeviceAdminPackage()) // Burada modülü ekliyoruz
+
+        // Native modülleri ekliyoruz
+        packages.add(DeviceAdminPackage())
+        packages.add(AudioFocusPackage())
+
         return packages
       }
 
