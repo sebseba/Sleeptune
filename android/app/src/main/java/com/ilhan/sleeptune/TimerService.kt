@@ -1,3 +1,5 @@
+// android/app/src/main/java/com/ilhan/sleeptune/TimerService.kt
+
 package com.ilhan.sleeptune
 
 import android.app.Service
@@ -11,43 +13,39 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import android.content.pm.ServiceInfo
-import com.ilhan.sleeptune.AudioFocusManager
-import com.ilhan.sleeptune.DeviceAdminHelper
 
 class TimerService : Service() {
-
     private var countDownTimer: CountDownTimer? = null
     private val CHANNEL_ID = "timer_channel"
+    private val NOTIF_ID = 1001
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("TimerService", "Service başlatıldı")
-
         val durationMillis = intent?.getLongExtra("duration", 0L) ?: 0L
+        val notification = buildNotification("Zamanlayıcı başladı")
 
-        createNotificationChannel()
-
-        val notification = buildNotification("Zamanlayıcı başlatıldı")
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // API 29+ için 3. parametre: NONE veya ihtiyacınıza göre başka tür
-            startForeground(
-                1,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE
-            )
-        } else {
-            startForeground(1, notification)
-        }
+        startForeground(NOTIF_ID, notification)
 
         startTimer(durationMillis)
-        return START_NOT_STICKY
+        return START_STICKY
     }
+
 
     private fun startTimer(durationMillis: Long) {
         countDownTimer?.cancel()
         countDownTimer = object : CountDownTimer(durationMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                Log.d("TimerService", "Kalan süre: ${millisUntilFinished / 1000} saniye")
+                val secondsLeft = millisUntilFinished / 1000
+                Log.d("TimerService", "Kalan süre: $secondsLeft saniye")
+
+                // Bildirimi her saniye güncelle
+                val updatedNotif = buildNotification("Kalan süre: $secondsLeft s")
+                (getSystemService(NotificationManager::class.java))
+                    .notify(NOTIF_ID, updatedNotif)
             }
             override fun onFinish() {
                 Log.d("TimerService", "Zamanlayıcı tamamlandı")
@@ -63,18 +61,24 @@ class TimerService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val chan = NotificationChannel(
                 CHANNEL_ID,
-                "Zamanlayıcı Servisi",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            getSystemService(NotificationManager::class.java).createNotificationChannel(chan)
+                "Sleeptune Zamanlayıcı",
+                NotificationManager.IMPORTANCE_HIGH  // <-- HIGH önem
+            ).apply {
+                description = "Arka planda çalışan zamanlayıcı"
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC  // <-- gözüksün kilit ekranında
+            }
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(chan)
         }
     }
 
-    private fun buildNotification(content: String): Notification {
+    private fun buildNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Sleeptune")
-            .setContentText(content)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("Sleeptune Timer")
+            .setContentText(text)
+            .setSmallIcon(R.mipmap.ic_launcher)  // mipmap ikonu daha garantili
+            .setPriority(NotificationCompat.PRIORITY_HIGH)              // <-- yüksek öncelik
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)       // <-- herkese açık
             .setOngoing(true)
             .build()
     }
