@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+// SLEEPTUNE/App.tsx
+
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,53 +9,60 @@ import {
   Alert,
   NativeModules,
 } from 'react-native';
-import { Slider } from '@miblanchard/react-native-slider';
+import TimerPickerModalComponent from './components/TimerPickerModal';
 
-const { DeviceAdmin, AudioFocusManager } = NativeModules;
+// NativeModules içinden artık TimerModule de geliyor
+const { DeviceAdmin, AudioFocusModule, TimerModule } = NativeModules;
 
 export default function App() {
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [duration, setDuration] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [timerActive, setTimerActive] = useState(false);
-  const [selectedDuration, setSelectedDuration] = useState(10); // saniye cinsinden
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!timerActive || secondsLeft === null) return;
 
     if (secondsLeft === 0) {
-      console.log('⏱ Süre doldu. Ekran kilitleniyor...');
-
-      try {
-        DeviceAdmin.lockScreen();
-      } catch (error) {
-        Alert.alert('Hata', 'Ekran kilitlenemedi.');
-      }
-
-      try {
-        AudioFocusManager.abandonAudioFocus();
-      } catch (error) {
-        console.log('Ses odağı bırakılamadı:', error);
-      }
-
+      fadeOutAndLock();
       setTimerActive(false);
       return;
     }
 
-    const interval = setInterval(() => {
-      setSecondsLeft((prev) => (prev !== null ? prev - 1 : null));
+    timerRef.current = setInterval(() => {
+      setSecondsLeft(prev => (prev !== null ? prev - 1 : null));
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [secondsLeft, timerActive]);
 
   const startTimer = () => {
-    try {
-      AudioFocusManager.requestAudioFocus();
-    } catch (error) {
-      console.log('Ses odağı alınamadı:', error);
-    }
+    
+    const totalSeconds =
+      duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
 
-    setSecondsLeft(selectedDuration);
+    setSecondsLeft(totalSeconds);
     setTimerActive(true);
+
+    // → Burada native foreground service'i başlatıyoruz:
+    try {
+      // totalSeconds saniye cinsinden, native ms beklediği için *1000
+      TimerModule.startTimer(totalSeconds * 1000);
+    } catch (e) {
+      console.log('Servis başlatılamadı:', e);
+    }
+  };
+
+  const fadeOutAndLock = async () => {
+    try {
+      await AudioFocusModule.fadeOutVolume();
+      DeviceAdmin.lockScreen();
+    } catch (e) {
+      console.log('Ses fade-out veya ekran kilitleme hatası:', e);
+    }
   };
 
   const requestPermission = () => {
@@ -64,40 +73,52 @@ export default function App() {
     }
   };
 
+  const formatTime = (totalSeconds: number): string => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${hours.toString().padStart(2, '0')} : ${minutes
+      .toString()
+      .padStart(2, '0')} : ${seconds.toString().padStart(2, '0')}`;
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Sleeptune ⏱</Text>
 
-      <Text style={styles.label}>Süre: {selectedDuration} saniye</Text>
-      <Slider
-        value={[selectedDuration]}
-        onValueChange={(val) => setSelectedDuration(Math.round(val[0]))}
-        minimumValue={5}
-        maximumValue={600}
-        step={5}
-        disabled={timerActive}
-        containerStyle={{ width: 300 }}
-        trackStyle={{ height: 6, backgroundColor: '#ccc' }}
-        minimumTrackTintColor="#FF69B4"
-        thumbTintColor="#FF69B4"
+      <Button title="SÜREYİ AYARLA" onPress={() => setPickerVisible(true)} />
+
+      <Text style={styles.label}>
+        Seçilen Süre: {duration.hours} saat {duration.minutes} dk {duration.seconds} sn
+      </Text>
+
+      <TimerPickerModalComponent
+        visible={pickerVisible}
+        setIsVisible={setPickerVisible}
+        onConfirm={(data) => {
+          setPickerVisible(false);
+          setDuration({
+            hours: data.hours,
+            minutes: data.minutes,
+            seconds: data.seconds,
+          });
+        }}
       />
 
-      <Text style={styles.time}>
-        {secondsLeft !== null ? `${secondsLeft}s` : 'Hazır'}
+      <Text style={styles.timer}>
+        {secondsLeft !== null ? formatTime(secondsLeft) : 'Hazır'}
       </Text>
 
       <Button
-        title="⏱️ Zamanlayıcıyı Başlat"
+        title="⏱️ ZAMANLAYICIYI BAŞLAT"
         onPress={startTimer}
         disabled={timerActive}
       />
 
       <View style={{ height: 20 }} />
 
-      <Button
-        title="📲 Yönetici Yetkisi Al"
-        onPress={requestPermission}
-      />
+      <Button title="📲 YÖNETİCİ YETKİSİ AL" onPress={requestPermission} />
     </View>
   );
 }
@@ -111,9 +132,9 @@ const styles = StyleSheet.create({
     fontSize: 32, marginBottom: 20, color: '#fff',
   },
   label: {
-    color: '#ccc', fontSize: 16, marginBottom: 5,
+    color: '#ccc', fontSize: 16, marginVertical: 10,
   },
-  time: {
-    fontSize: 48, marginVertical: 20, color: '#fff',
+  timer: {
+    fontSize: 48, marginVertical: 30, color: '#fff',
   },
 });

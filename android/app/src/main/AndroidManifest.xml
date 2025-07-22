@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.ilhan.sleeptune">
 
     <!-- Gereken izinler -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -16,7 +17,7 @@
         android:theme="@style/AppTheme"
         android:supportsRtl="true">
 
-        <!-- MainActivity -->
+        <!-- Ana Activity -->
         <activity
             android:name=".MainActivity"
             android:label="@string/app_name"
@@ -30,7 +31,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Device Admin alıcısı -->
+        <!-- Device Admin Receiver -->
         <receiver
             android:name=".MyDeviceAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -43,5 +44,10 @@
             </intent-filter>
         </receiver>
 
+        <!-- TimerService Tanımı -->
+        <service
+            android:name=".TimerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>

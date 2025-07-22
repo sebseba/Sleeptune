@@ -1,5 +1,5 @@
 {
-  "name": "Sleeptune",
+  "name": "sleeptune",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -11,9 +11,13 @@
   },
   "dependencies": {
     "@miblanchard/react-native-slider": "^2.6.0",
+    "@react-native-community/datetimepicker": "^8.4.2",
+    "@react-native-masked-view/masked-view": "^0.3.2",
     "@react-native/new-app-screen": "0.80.1",
     "react": "19.1.0",
-    "react-native": "0.80.1"
+    "react-native": "0.80.1",
+    "react-native-linear-gradient": "^2.8.3",
+    "react-native-timer-picker": "^2.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -27,7 +31,7 @@
     "@react-native/metro-config": "0.80.1",
     "@react-native/typescript-config": "0.80.1",
     "@types/jest": "^29.5.13",
-    "@types/react": "^19.1.0",
+    "@types/react": "^19.1.8",
     "@types/react-test-renderer": "^19.1.0",
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
