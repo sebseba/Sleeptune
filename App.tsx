@@ -1,5 +1,3 @@
-// SLEEPTUNE/App.tsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -8,79 +6,88 @@ import {
   StyleSheet,
   Alert,
   NativeModules,
+  AppState,
+  DeviceEventEmitter
 } from 'react-native';
 import TimerPickerModalComponent from './components/TimerPickerModal';
 
-// NativeModules içinden artık TimerModule de geliyor
 const { DeviceAdmin, AudioFocusModule, TimerModule } = NativeModules;
 
 export default function App() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [duration, setDuration] = useState({ hours: 0, minutes: 0, seconds: 0 });
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const [timerActive, setTimerActive] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [endTimestamp, setEndTimestamp] = useState<number | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    if (!timerActive || secondsLeft === null) return;
-
-    if (secondsLeft === 0) {
-      fadeOutAndLock();
-      setTimerActive(false);
-      return;
-    }
-
-    timerRef.current = setInterval(() => {
-      setSecondsLeft(prev => (prev !== null ? prev - 1 : null));
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [secondsLeft, timerActive]);
-
+  // Başlat tuşu
   const startTimer = () => {
-    
-    const totalSeconds =
-      duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
-
-    setSecondsLeft(totalSeconds);
-    setTimerActive(true);
-
-    // → Burada native foreground service'i başlatıyoruz:
-    try {
-      // totalSeconds saniye cinsinden, native ms beklediği için *1000
-      TimerModule.startTimer(totalSeconds * 1000);
-    } catch (e) {
-      console.log('Servis başlatılamadı:', e);
-    }
+    const totalSec = duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
+    const now = Date.now();
+    setEndTimestamp(now + totalSec * 1000);
+    setSecondsLeft(totalSec);
+    TimerModule.startTimer(totalSec * 1000);
   };
+
+  // Her saniye kalan süreci hesapla
+  useEffect(() => {
+    if (endTimestamp === null) return;
+    clearInterval(intervalRef.current!);
+    intervalRef.current = setInterval(() => {
+      const diff = Math.ceil((endTimestamp - Date.now()) / 1000);
+      if (diff <= 0) {
+        clearInterval(intervalRef.current!);
+        setEndTimestamp(null);
+        setSecondsLeft(0);
+      } else {
+        setSecondsLeft(diff);
+      }
+    }, 1000);
+    return () => clearInterval(intervalRef.current!);
+  }, [endTimestamp]);
+
+  // AppState değişiminde de anlık güncelle
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active' && endTimestamp !== null) {
+        const diff = Math.ceil((endTimestamp - Date.now()) / 1000);
+        setSecondsLeft(diff > 0 ? diff : 0);
+      }
+    });
+    return () => sub.remove();
+  }, [endTimestamp]);
+
+  // Native bitti broadcast’ini dinle
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('TimerFinished', () => {
+      setEndTimestamp(null);
+      setSecondsLeft(0);
+    });
+    return () => sub.remove();
+  }, []);
 
   const fadeOutAndLock = async () => {
     try {
       await AudioFocusModule.fadeOutVolume();
       DeviceAdmin.lockScreen();
     } catch (e) {
-      console.log('Ses fade-out veya ekran kilitleme hatası:', e);
+      console.log('Hata:', e);
     }
   };
 
   const requestPermission = () => {
     try {
       DeviceAdmin.requestAdminPermission();
-    } catch (error) {
-      Alert.alert('Hata', 'Yönetici yetkisi istenirken hata oluştu.');
+    } catch {
+      Alert.alert('Hata', 'Yönetici yetkisi alınamadı.');
     }
   };
 
-  const formatTime = (totalSeconds: number): string => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${hours.toString().padStart(2, '0')} : ${minutes
-      .toString()
-      .padStart(2, '0')} : ${seconds.toString().padStart(2, '0')}`;
+  const formatTime = (sec: number) => {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return `${h.toString().padStart(2,'0')} : ${m.toString().padStart(2,'0')} : ${s.toString().padStart(2,'0')}`;
   };
 
   return (
@@ -88,53 +95,35 @@ export default function App() {
       <Text style={styles.title}>Sleeptune ⏱</Text>
 
       <Button title="SÜREYİ AYARLA" onPress={() => setPickerVisible(true)} />
-
       <Text style={styles.label}>
-        Seçilen Süre: {duration.hours} saat {duration.minutes} dk {duration.seconds} sn
+        Seçilen: {duration.hours} saat {duration.minutes} dk {duration.seconds} sn
       </Text>
 
       <TimerPickerModalComponent
         visible={pickerVisible}
         setIsVisible={setPickerVisible}
-        onConfirm={(data) => {
-          setPickerVisible(false);
-          setDuration({
-            hours: data.hours,
-            minutes: data.minutes,
-            seconds: data.seconds,
-          });
-        }}
+        onConfirm={data => setDuration(data)}
       />
 
       <Text style={styles.timer}>
-        {secondsLeft !== null ? formatTime(secondsLeft) : 'Hazır'}
+        {endTimestamp === null ? 'Hazır' : formatTime(secondsLeft)}
       </Text>
 
       <Button
-        title="⏱️ ZAMANLAYICIYI BAŞLAT"
+        title="⏱️ BAŞLAT"
         onPress={startTimer}
-        disabled={timerActive}
+        disabled={endTimestamp !== null}
       />
 
       <View style={{ height: 20 }} />
-
       <Button title="📲 YÖNETİCİ YETKİSİ AL" onPress={requestPermission} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#111', padding: 20,
-  },
-  title: {
-    fontSize: 32, marginBottom: 20, color: '#fff',
-  },
-  label: {
-    color: '#ccc', fontSize: 16, marginVertical: 10,
-  },
-  timer: {
-    fontSize: 48, marginVertical: 30, color: '#fff',
-  },
+  container: { flex:1, justifyContent:'center', alignItems:'center', backgroundColor:'#111', padding:20 },
+  title: { fontSize:32, marginBottom:20, color:'#fff' },
+  label: { color:'#ccc', fontSize:16, marginVertical:10 },
+  timer: { fontSize:48, marginVertical:30, color:'#fff' },
 });

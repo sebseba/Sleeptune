@@ -133,4 +133,6 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    implementation ("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 }

@@ -1,38 +1,39 @@
-import React from 'react';
-import { useColorScheme } from 'react-native';
-import { TimerPickerModal } from 'react-native-timer-picker';
+// components/TimerPickerModal.tsx
+
+import React from 'react'
+import { useColorScheme } from 'react-native'
+import { TimerPickerModal } from 'react-native-timer-picker'
 
 type Props = {
-  visible: boolean;
-  setIsVisible: (v: boolean) => void;
-  onConfirm: (data: { hours: number; minutes: number; seconds: number }) => void;
-};
+  visible: boolean
+  setIsVisible: (v: boolean) => void
+  onConfirm: (data: { hours: number; minutes: number; seconds: number }) => void
+}
 
 export default function TimerPickerModalComponent({
   visible,
   setIsVisible,
-  onConfirm
+  onConfirm,
 }: Props) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = useColorScheme() === 'dark'
 
   return (
     <TimerPickerModal
       visible={visible}
-      onConfirm={onConfirm}
+      setIsVisible={setIsVisible}
+      onConfirm={(picked) => {
+        onConfirm(picked)
+        setIsVisible(false)
+      }}
       onCancel={() => setIsVisible(false)}
       hideDays={true}
-      // @ts-ignore
-      maximum={23 * 3600 + 59 * 60 + 59}
+      maximumHours={23}
+      maximumMinutes={59}
+      maximumSeconds={59}
       closeOnOverlayPress={true}
       modalTitle="⏰ Süre Ayarla"
-      textColor={isDark ? '#ffffff' : '#000000'}
-      pickerStyle={{
-        backgroundColor: isDark ? '#222' : '#fff',
-      }}
-      buttonStyle={{
-        backgroundColor: isDark ? '#333' : '#eee',
-      }}
+      confirmButtonText="Tamam"
+      cancelButtonText="İptal"
     />
-  );
+  )
 }
