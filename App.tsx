@@ -5,9 +5,11 @@ import {
   Button,
   StyleSheet,
   Alert,
+  Platform,
   NativeModules,
   AppState,
-  DeviceEventEmitter
+  DeviceEventEmitter,
+  PermissionsAndroid,
 } from 'react-native';
 import TimerPickerModalComponent from './components/TimerPickerModal';
 
@@ -20,16 +22,44 @@ export default function App() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // 📣 Android13+ bildirim izni
+  useEffect(() => {
+    async function askNotifPerm() {
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        const res = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
+        if (res !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert(
+            'Bildirim İzni Gerekli',
+            'Arka planda canlı sayaç ve kapanış aksiyonu için bildirim izni gereklidir.'
+          );
+        }
+      }
+    }
+    askNotifPerm();
+  }, []);
+
+  // 🕹 fadeOutAndLock – JS tarafı aksiyon
+  const fadeOutAndLock = async () => {
+    try {
+      await AudioFocusModule.fadeOutVolume();
+      DeviceAdmin.lockScreen();
+    } catch (e) {
+      console.warn('fadeOutAndLock error:', e);
+    }
+  };
+
   // Başlat tuşu
   const startTimer = () => {
     const totalSec = duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
-    const now = Date.now();
-    setEndTimestamp(now + totalSec * 1000);
+    const ms = totalSec * 1000;
+    setEndTimestamp(Date.now() + ms);
     setSecondsLeft(totalSec);
-    TimerModule.startTimer(totalSec * 1000);
+    TimerModule.startTimer(ms);
   };
 
-  // Her saniye kalan süreci hesapla
+  // Her saniye UI güncellemesi
   useEffect(() => {
     if (endTimestamp === null) return;
     clearInterval(intervalRef.current!);
@@ -46,7 +76,7 @@ export default function App() {
     return () => clearInterval(intervalRef.current!);
   }, [endTimestamp]);
 
-  // AppState değişiminde de anlık güncelle
+  // Uygulama öne gelince güncelle
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active' && endTimestamp !== null) {
@@ -57,23 +87,15 @@ export default function App() {
     return () => sub.remove();
   }, [endTimestamp]);
 
-  // Native bitti broadcast’ini dinle
+  // 📢 TimerService bittiğinde hem UI hem de fadeOutAndLock
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('TimerFinished', () => {
       setEndTimestamp(null);
       setSecondsLeft(0);
+      fadeOutAndLock();
     });
     return () => sub.remove();
   }, []);
-
-  const fadeOutAndLock = async () => {
-    try {
-      await AudioFocusModule.fadeOutVolume();
-      DeviceAdmin.lockScreen();
-    } catch (e) {
-      console.log('Hata:', e);
-    }
-  };
 
   const requestPermission = () => {
     try {
@@ -87,7 +109,9 @@ export default function App() {
     const h = Math.floor(sec / 3600);
     const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
-    return `${h.toString().padStart(2,'0')} : ${m.toString().padStart(2,'0')} : ${s.toString().padStart(2,'0')}`;
+    return `${h.toString().padStart(2, '0')} : ${m.toString().padStart(2, '0')} : ${s
+      .toString()
+      .padStart(2, '0')}`;
   };
 
   return (
@@ -105,25 +129,20 @@ export default function App() {
         onConfirm={data => setDuration(data)}
       />
 
-      <Text style={styles.timer}>
-        {endTimestamp === null ? 'Hazır' : formatTime(secondsLeft)}
-      </Text>
+      <Text style={styles.timer}>{endTimestamp === null ? 'Hazır' : formatTime(secondsLeft)}</Text>
 
-      <Button
-        title="⏱️ BAŞLAT"
-        onPress={startTimer}
-        disabled={endTimestamp !== null}
-      />
+      <Button title="⏱️ BAŞLAT" onPress={startTimer} disabled={endTimestamp !== null} />
 
       <View style={{ height: 20 }} />
+
       <Button title="📲 YÖNETİCİ YETKİSİ AL" onPress={requestPermission} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex:1, justifyContent:'center', alignItems:'center', backgroundColor:'#111', padding:20 },
-  title: { fontSize:32, marginBottom:20, color:'#fff' },
-  label: { color:'#ccc', fontSize:16, marginVertical:10 },
-  timer: { fontSize:48, marginVertical:30, color:'#fff' },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', padding: 20 },
+  title: { fontSize: 32, marginBottom: 20, color: '#fff' },
+  label: { color: '#ccc', fontSize: 16, marginVertical: 10 },
+  timer: { fontSize: 48, marginVertical: 30, color: '#fff' },
 });
