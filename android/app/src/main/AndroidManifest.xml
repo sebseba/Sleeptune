@@ -43,6 +43,12 @@
             </intent-filter>
         </receiver>
 
+            <!-- Bildirim izni için persistent notification action receiver -->
+        <receiver
+            android:name=".PermissionActionReceiver"
+            android:exported="false" />
+
+
         <service
             android:name=".TimerService"
             android:exported="false"
