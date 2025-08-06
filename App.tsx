@@ -3,14 +3,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   Alert,
   Platform,
   NativeModules,
   AppState,
   DeviceEventEmitter,
   PermissionsAndroid,
-  TouchableOpacity,
+  Pressable,
+  StyleSheet,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LinearGradient from 'react-native-linear-gradient';
@@ -23,9 +23,10 @@ export default function App() {
   const [duration, setDuration] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [endTimestamp, setEndTimestamp] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [paused, setPaused] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // — 1) İlk açılışta: Android13+ bildirim izni iste
+  // 1) İlk açılışta bildirim + yönetici izni
   useEffect(() => {
     (async () => {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -39,7 +40,6 @@ export default function App() {
           );
         }
       }
-      // — 2) Yönetici izni Alert’ini göster (sadece bir kez)
       const asked = await AsyncStorage.getItem('adminAsked');
       if (asked !== 'true') {
         Alert.alert(
@@ -64,18 +64,45 @@ export default function App() {
     })();
   }, []);
 
-  // — Timer başlat
+  // Başlat
   const startTimer = () => {
-    const totalSec = duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
+    const totalSec =
+      duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
+    if (totalSec === 0) return;
     const ms = totalSec * 1000;
+    setPaused(false);
     setEndTimestamp(Date.now() + ms);
     setSecondsLeft(totalSec);
     TimerModule.startTimer(ms);
   };
 
-  // — Her saniye güncelle
+  // Duraklat
+  const pauseTimer = () => {
+    clearInterval(intervalRef.current!);
+    setPaused(true);
+    TimerModule.pauseTimer?.();
+  };
+
+  // Devam Et
+  const resumeTimer = () => {
+    const ms = secondsLeft * 1000;
+    setPaused(false);
+    setEndTimestamp(Date.now() + ms);
+    TimerModule.startTimer(ms);
+  };
+
+  // Durdur
+  const stopTimer = () => {
+    clearInterval(intervalRef.current!);
+    setPaused(false);
+    setEndTimestamp(null);
+    setSecondsLeft(0);
+    TimerModule.stopTimer?.();
+  };
+
+  // Her saniye güncelle
   useEffect(() => {
-    if (endTimestamp === null) return;
+    if (endTimestamp === null || paused) return;
     clearInterval(intervalRef.current!);
     intervalRef.current = setInterval(() => {
       const diff = Math.ceil((endTimestamp - Date.now()) / 1000);
@@ -88,20 +115,20 @@ export default function App() {
       }
     }, 1000);
     return () => clearInterval(intervalRef.current!);
-  }, [endTimestamp]);
+  }, [endTimestamp, paused]);
 
-  // — Uygulama ön plana geldiğinde de güncelle
+  // AppState değişince güncelle
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active' && endTimestamp !== null) {
+      if (state === 'active' && endTimestamp !== null && !paused) {
         const diff = Math.ceil((endTimestamp - Date.now()) / 1000);
         setSecondsLeft(diff > 0 ? diff : 0);
       }
     });
     return () => sub.remove();
-  }, [endTimestamp]);
+  }, [endTimestamp, paused]);
 
-  // — Zamanlayıcı bittiğinde JS aksiyonu tetikleyip UI sıfırla
+  // Bittiğinde JS aksiyon & UI sıfırla
   const fadeOutAndLock = async () => {
     try {
       await AudioFocusModule.fadeOutVolume();
@@ -112,6 +139,7 @@ export default function App() {
   };
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('TimerFinished', () => {
+      setPaused(false);
       setEndTimestamp(null);
       setSecondsLeft(0);
       fadeOutAndLock();
@@ -119,13 +147,20 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // — Sadece MM:SS gösteren format
+  // HH:MM:SS
   const formatTime = (sec: number) => {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+    const h = Math.floor(sec / 3600),
+      m = Math.floor((sec % 3600) / 60),
+      s = sec % 60;
+    return `${h.toString().padStart(2,'0')}:${m
+      .toString()
+      .padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
   };
+
+  const initialSeconds =
+    duration.hours * 3600 + duration.minutes * 60 + duration.seconds;
+  const displaySeconds =
+    endTimestamp !== null ? secondsLeft : initialSeconds;
 
   return (
     <LinearGradient
@@ -134,43 +169,48 @@ export default function App() {
       end={{ x: 0.5, y: 1 }}
       style={styles.container}
     >
-      <Text style={styles.title}>Sleeptune</Text>
+      <Text style={styles.title}>Sleeptune ⏱</Text>
 
-      <View style={styles.circle}>
-        <Text style={styles.timeText}>
-          {endTimestamp === null ? '00:00:00' : formatTime(secondsLeft)}
-        </Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.buttonWrapper}
-        onPress={startTimer}
-        disabled={endTimestamp !== null}
-      >
-        <LinearGradient
-          colors={['#00E5FF', '#6200EA']}
-          style={styles.button}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Text style={styles.buttonText}>⏱️ BAŞLAT</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.buttonWrapper}
+      {/* Sayaç gövdesi */}
+      <Pressable
         onPress={() => setPickerVisible(true)}
+        style={styles.timerWrapper}
       >
-        <LinearGradient
-          colors={['#00E5FF', '#6200EA']}
-          style={styles.button}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Text style={styles.buttonText}>⏲️ SÜREYİ AYARLA</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+        <Text style={styles.timerText}>{formatTime(displaySeconds)}</Text>
+      </Pressable>
 
+      <View style={{ height: 24 }} />
+
+      {/* Duruma göre buton satırı */}
+      {endTimestamp === null ? (
+        <Pressable
+          style={[styles.btn, initialSeconds === 0 && styles.btnDisabled]}
+          onPress={startTimer}
+          disabled={initialSeconds === 0}
+        >
+          <Text style={styles.btnText}>⏱️ BAŞLAT</Text>
+        </Pressable>
+      ) : paused ? (
+        <View style={styles.row}>
+          <Pressable style={styles.btn} onPress={resumeTimer}>
+            <Text style={styles.btnText}>▶️ DEVAM ET</Text>
+          </Pressable>
+          <Pressable style={styles.btn} onPress={stopTimer}>
+            <Text style={styles.btnText}>⏹️ DURDUR</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.row}>
+          <Pressable style={styles.btn} onPress={pauseTimer}>
+            <Text style={styles.btnText}>⏸️ DURAKLAT</Text>
+          </Pressable>
+          <Pressable style={styles.btn} onPress={stopTimer}>
+            <Text style={styles.btnText}>⏹️ DURDUR</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Modal */}
       <TimerPickerModalComponent
         visible={pickerVisible}
         setIsVisible={setPickerVisible}
@@ -182,43 +222,46 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 20,
+    flex: 1, padding: 20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    width: 260,
+    justifyContent: 'space-between',
   },
   title: {
-    fontSize: 36,
-    color: '#fff',
+    fontSize: 32,
     marginBottom: 24,
-    fontWeight: '600',
+    color: '#fff',
   },
-  circle: {
+  timerWrapper: {
+    borderWidth: 4,
+    borderColor: '#6A5ACD',
+    borderRadius: 120,
     width: 200,
     height: 200,
-    borderRadius: 100,
-    backgroundColor: '#111',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 32,
   },
-  timeText: {
+  timerText: {
     fontSize: 48,
     color: '#fff',
-    fontWeight: '500',
   },
-  buttonWrapper: {
-    width: '80%',
-    marginVertical: 8,
+  btn: {
+    backgroundColor: '#6A5ACD',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    marginHorizontal: 8,
   },
-  button: {
-    paddingVertical: 14,
-    borderRadius: 28,
-    alignItems: 'center',
+  btnDisabled: {
+    backgroundColor: '#444',
   },
-  buttonText: {
+  btnText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
